@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "Hello ChatGPT",
   "version": "1.0.0",
-  "description": "Shows a Hello World popup and turns ChatGPT black.",
+  "description": "Shows a Hello World popup and adds a folder sidebar to ChatGPT.",
+  "permissions": ["storage"],
   "action": {
     "default_popup": "popup/popup.html"
   },
