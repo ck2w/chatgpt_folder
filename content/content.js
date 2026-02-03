@@ -6,7 +6,13 @@
   style.id = styleId;
   style.textContent = `
     :root, body {
-      background-color: #000000 !important;
+      background-color: #1e1e1e !important;
+      color: #ffffff !important;
+    }
+    #thread, #thread * {
+      color: #ffffff !important;
+    }
+    textarea, input, [contenteditable="true"] {
       color: #ffffff !important;
     }
     * {
