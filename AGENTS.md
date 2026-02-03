@@ -4,7 +4,8 @@
 This repository contains a simple Chrome extension that customizes ChatGPT UI. The planned feature is a left sidebar with hierarchical folders, where each folder can store and organize historical chats.
 
 ## Goals
-- Implement a folder tree in the left sidebar (ChatGPT.com) with expand/collapse, drag-and-drop reordering, and counts.
+- Implement a folder tree in the left sidebar (ChatGPT.com) that visually mimics gemini-voyager’s folder UI.
+- Use gemini-voyager as the style reference: `gemini-voyager/public/contentStyle.css` and structure cues from `gemini-voyager/src/pages/content/folder/manager.ts`.
 - Allow each chat to be assigned to exactly one folder (MVP), with future support for multi-folder if needed.
 - Store folder structure and chat assignments locally first; plan for sync later.
 
@@ -24,13 +25,13 @@ This repository contains a simple Chrome extension that customizes ChatGPT UI. T
 
 ## Data model (proposed)
 - Folders: `{ id, name, parentId|null, order }`
-- Chats: `{ id, title, url, folderId|null, createdAt, updatedAt }`
+- Folder contents: `{ [folderId]: string[] }` (chat IDs)
+- Chat index (ephemeral): `{ id, title, url }` from DOM
 - Storage: `chrome.storage.local` for MVP.
 
 ## UI behavior (MVP)
-- Sidebar section titled "Folders" above the existing chat list (insert before \"Projects/项目\" or \"Your chats/你的聊天\").
-- Search input filters folders and chats.
-- Expand/collapse per folder; show counts.
+- Sidebar section titled "Folders" above the existing chat list (insert before "Projects/项目" or "Your chats/你的聊天").
+- Expand/collapse per folder.
 - Drag chat into folder to assign.
 
 ## Implementation notes

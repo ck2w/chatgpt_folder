@@ -1,26 +1,27 @@
 (() => {
-  const ROOT_ID = "cgpt-folders-root";
-  const STYLE_ID = "cgpt-folders-style";
-  const STORAGE_KEYS = {
-    folders: "cgptFolders",
-    chats: "cgptChats",
-  };
+  const ROOT_CLASS = "gv-folder-container";
+  const STYLE_ID = "cgpt-gv-folder-style";
+  const STORAGE_KEY = "cgptFolderDataV1";
+  const MAX_LEVEL = 6;
 
   const state = {
     folders: [],
-    chats: [],
+    folderContents: {},
     expanded: new Set(),
-    search: "",
+    chatIndex: new Map(),
     rootEl: null,
-    treeEl: null,
+    listEl: null,
+    menuEl: null,
+    dataLoaded: false,
   };
 
   const init = () => {
     injectStyles();
     ensureMounted();
     loadData().then(() => {
-      render();
+      state.dataLoaded = true;
       syncChatsFromDOM();
+      render();
       observeSidebar();
     });
     wireStorageListener();
@@ -31,179 +32,247 @@
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-      #${ROOT_ID} {
-        font-family: inherit;
-        margin: 12px 8px 8px;
-        padding: 8px;
-        border: 1px solid rgba(120, 120, 120, 0.25);
-        border-radius: 8px;
-        background: rgba(127, 127, 127, 0.06);
+      @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@0..1&display=swap');
+
+      :root {
+        --folder-bg: #ffffff;
+        --folder-text: #1f2937;
+        --folder-border: #e5e7eb;
+        --folder-hover-bg: #f3f4f6;
+        --folder-active-bg: #e0e7ff;
+        --folder-icon-color: #6b7280;
+        --folder-menu-bg: #ffffff;
+        --folder-menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        --folder-dragover-bg: #dbeafe;
+        --folder-dragover-border: #3b82f6;
+        --folder-selected-accent: #34d399;
+        --folder-selected-glow: rgba(16, 185, 129, 0.12);
       }
-      #${ROOT_ID} .cgpt-folders-header {
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --folder-bg: #1f2937;
+          --folder-text: #e5e7eb;
+          --folder-border: #374151;
+          --folder-hover-bg: #374151;
+          --folder-active-bg: #1e40af;
+          --folder-icon-color: #9ca3af;
+          --folder-menu-bg: #1f2937;
+          --folder-menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+          --folder-dragover-bg: #1e3a8a;
+          --folder-dragover-border: #60a5fa;
+          --folder-selected-accent: #6ee7b7;
+          --folder-selected-glow: rgba(16, 185, 129, 0.10);
+        }
+      }
+
+      .google-symbols {
+        font-family: 'Material Symbols Outlined', sans-serif;
+        font-weight: 400;
+        font-style: normal;
+        font-size: 20px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-flex;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .${ROOT_CLASS} {
+        margin-bottom: 16px;
+        padding: 8px 8px 8px 12px;
+        margin-left: 0;
+      }
+
+      .${ROOT_CLASS} .gv-folder-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        padding: 8px 16px 8px 0;
         margin-bottom: 8px;
+        border-radius: 8px;
+        transition: background-color 0.2s, border 0.2s;
       }
-      #${ROOT_ID} .cgpt-folders-title {
-        font-weight: 600;
-        font-size: 14px;
+
+      .${ROOT_CLASS} .gv-folder-header .title {
+        margin: 0;
+        padding-left: 16px;
+        opacity: 0.7;
+        color: var(--folder-text);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
-      #${ROOT_ID} .cgpt-folders-add {
-        border: 1px solid rgba(120, 120, 120, 0.4);
-        background: transparent;
-        border-radius: 6px;
-        width: 22px;
-        height: 22px;
-        cursor: pointer;
-      }
-      #${ROOT_ID} .cgpt-folders-search input {
-        width: 100%;
-        padding: 6px 8px;
-        border-radius: 6px;
-        border: 1px solid rgba(120, 120, 120, 0.35);
-        background: transparent;
-      }
-      #${ROOT_ID} .cgpt-folders-tree {
-        margin-top: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      #${ROOT_ID} .cgpt-folder-row {
-        display: grid;
-        grid-template-columns: 18px 1fr auto auto;
-        gap: 6px;
-        align-items: center;
-        padding: 4px 6px;
-        border-radius: 6px;
-      }
-      #${ROOT_ID} .cgpt-folder-row[data-drop="true"] {
-        outline: 1px dashed rgba(120, 120, 120, 0.7);
-      }
-      #${ROOT_ID} .cgpt-folder-toggle {
+
+      .${ROOT_CLASS} .gv-folder-add-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
         border: none;
         background: transparent;
+        color: var(--folder-icon-color);
         cursor: pointer;
-        width: 18px;
-        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s, color 0.2s;
       }
-      #${ROOT_ID} .cgpt-folder-name {
+
+      .${ROOT_CLASS} .gv-folder-add-btn:hover {
+        background-color: var(--folder-hover-bg);
+        color: var(--folder-text);
+      }
+
+      .${ROOT_CLASS} .gv-folder-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-height: 40px;
+        padding: 4px;
+        border-radius: 8px;
+        transition: background-color 0.2s, border 0.2s;
+      }
+
+      .${ROOT_CLASS} .gv-folder-item {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .${ROOT_CLASS} .gv-folder-item-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        position: relative;
+      }
+
+      .${ROOT_CLASS} .gv-folder-item-header:hover {
+        background-color: var(--folder-hover-bg);
+      }
+
+      .${ROOT_CLASS} .gv-folder-item-header.gv-folder-dragover {
+        background-color: var(--folder-dragover-bg);
+        border: 2px dashed var(--folder-dragover-border);
+      }
+
+      .${ROOT_CLASS} .gv-folder-expand-btn {
+        width: 20px;
+        height: 20px;
+        border: none;
+        background: transparent;
+        color: var(--folder-icon-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        flex-shrink: 0;
+      }
+
+      .${ROOT_CLASS} .gv-folder-icon {
+        font-size: 20px;
+        color: var(--folder-icon-color);
+        flex-shrink: 0;
+      }
+
+      .${ROOT_CLASS} .gv-folder-name {
+        flex: 1;
+        font-size: 14px;
+        color: var(--folder-text);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        user-select: none;
       }
-      #${ROOT_ID} .cgpt-folder-count {
-        font-size: 12px;
-        opacity: 0.7;
-      }
-      #${ROOT_ID} .cgpt-folder-add-child {
-        border: 1px solid rgba(120, 120, 120, 0.35);
+
+      .${ROOT_CLASS} .gv-folder-actions-btn {
+        width: 24px;
+        height: 24px;
+        border: none;
         background: transparent;
-        border-radius: 5px;
-        width: 20px;
-        height: 20px;
-        cursor: pointer;
-      }
-      #${ROOT_ID} .cgpt-folder-children {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-      }
-      #${ROOT_ID} .cgpt-chat-row {
-        padding: 3px 6px 3px 24px;
-        font-size: 13px;
-        border-radius: 6px;
+        color: var(--folder-icon-color);
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 6px;
+        justify-content: center;
+        border-radius: 4px;
+        opacity: 0;
+        transition: opacity 0.2s, background-color 0.2s;
+        flex-shrink: 0;
       }
-      #${ROOT_ID} .cgpt-chat-row[data-drop="true"] {
-        outline: 1px dashed rgba(120, 120, 120, 0.7);
+
+      .${ROOT_CLASS} .gv-folder-item-header:hover .gv-folder-actions-btn {
+        opacity: 1;
       }
-      #${ROOT_ID} .cgpt-empty {
-        font-size: 12px;
-        opacity: 0.6;
+
+      .${ROOT_CLASS} .gv-folder-actions-btn:hover {
+        background-color: var(--folder-hover-bg);
+      }
+
+      .${ROOT_CLASS} .gv-folder-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 2px;
+      }
+
+      .${ROOT_CLASS} .gv-folder-conversation {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background-color 0.15s ease, opacity 0.2s;
+        position: relative;
+      }
+
+      .${ROOT_CLASS} .gv-folder-conversation:hover {
+        background-color: var(--folder-hover-bg);
+      }
+
+      .${ROOT_CLASS} .gv-folder-menu {
+        position: fixed;
+        background: var(--folder-menu-bg);
+        color: var(--folder-text);
+        border: 1px solid var(--folder-border);
+        border-radius: 10px;
+        box-shadow: var(--folder-menu-shadow);
         padding: 6px;
+        z-index: 9999;
+        min-width: 180px;
+      }
+
+      .${ROOT_CLASS} .gv-folder-menu-item {
+        display: block;
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+
+      .${ROOT_CLASS} .gv-folder-menu-item:hover {
+        background-color: var(--folder-hover-bg);
+      }
+
+      .${ROOT_CLASS} .gv-folder-empty {
+        padding: 6px 12px;
+        font-size: 12px;
+        opacity: 0.7;
       }
     `;
     document.documentElement.appendChild(style);
-  };
-
-  const mountUI = () => {
-    if (document.getElementById(ROOT_ID)) return;
-    const sidebar = findSidebar();
-    if (!sidebar) return;
-
-    const root = document.createElement("section");
-    root.id = ROOT_ID;
-
-    const header = document.createElement("div");
-    header.className = "cgpt-folders-header";
-
-    const title = document.createElement("div");
-    title.className = "cgpt-folders-title";
-    title.textContent = "Folders";
-
-    const addButton = document.createElement("button");
-    addButton.className = "cgpt-folders-add";
-    addButton.type = "button";
-    addButton.textContent = "+";
-    addButton.addEventListener("click", () => addFolder(null));
-
-    header.appendChild(title);
-    header.appendChild(addButton);
-
-    const searchWrap = document.createElement("div");
-    searchWrap.className = "cgpt-folders-search";
-    const search = document.createElement("input");
-    search.type = "search";
-    search.placeholder = "Search folders...";
-    search.addEventListener("input", (event) => {
-      state.search = event.target.value.trim().toLowerCase();
-      render();
-    });
-    searchWrap.appendChild(search);
-
-    const tree = document.createElement("div");
-    tree.className = "cgpt-folders-tree";
-    tree.addEventListener("dragover", (event) => {
-      const payload = readDragPayload(event);
-      if (!payload) return;
-      if (payload.type === "folder") {
-        event.preventDefault();
-      }
-    });
-    tree.addEventListener("drop", (event) => {
-      const payload = readDragPayload(event);
-      if (!payload) return;
-      if (payload.type === "folder") {
-        event.preventDefault();
-        moveFolderToRoot(payload.id);
-      }
-      if (payload.type === "chat") {
-        event.preventDefault();
-        assignChatToFolder(payload.id, null);
-      }
-    });
-
-    root.appendChild(header);
-    root.appendChild(searchWrap);
-    root.appendChild(tree);
-
-    const insertBefore = findInsertBeforeNode(sidebar);
-    if (insertBefore && insertBefore.parentElement === sidebar) {
-      sidebar.insertBefore(root, insertBefore);
-    } else if (insertBefore && insertBefore.parentElement) {
-      insertBefore.parentElement.insertBefore(root, insertBefore);
-    } else {
-      sidebar.prepend(root);
-    }
-
-    state.rootEl = root;
-    state.treeEl = tree;
   };
 
   const ensureMounted = () => {
@@ -211,223 +280,137 @@
     const timer = window.setInterval(() => {
       attempts += 1;
       mountUI();
-      if (document.getElementById(ROOT_ID) || attempts > 60) {
+      if (document.querySelector(`.${ROOT_CLASS}`) || attempts > 60) {
         window.clearInterval(timer);
       }
     }, 500);
   };
 
-  const findSidebar = () => {
-    const existing = document.querySelector(`#${ROOT_ID}`);
-    if (existing) return existing.parentElement;
+  const mountUI = () => {
+    if (document.querySelector(`.${ROOT_CLASS}`)) return;
+    const sidebar = findSidebarNav();
+    if (!sidebar) return;
 
-    const explicit = document.querySelector(
-      "[data-testid=\"sidebar\"], nav[aria-label], nav[role=\"navigation\"], aside"
-    );
-    if (explicit) return explicit;
+    const container = document.createElement("div");
+    container.className = ROOT_CLASS;
 
-    const labelMatch = findSidebarByLabel();
-    if (labelMatch) return labelMatch;
+    const header = document.createElement("div");
+    header.className = "gv-folder-header";
 
-    const aside = document.querySelector("aside");
-    if (aside) return aside;
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = "Folders";
 
-    const navCandidates = Array.from(document.querySelectorAll("nav"));
-    const nav = navCandidates.find((node) => {
-      const text = node.textContent || "";
-      return (
-        text.includes("New chat") ||
-        text.includes("Chats") ||
-        text.includes("新建聊天") ||
-        text.includes("聊天")
-      );
+    const addBtn = document.createElement("button");
+    addBtn.className = "gv-folder-add-btn";
+    addBtn.type = "button";
+    addBtn.innerHTML = '<span class="google-symbols">add</span>';
+    addBtn.addEventListener("click", () => {
+      promptCreateFolder(null);
     });
-    if (nav) return nav;
 
-    return document.body;
+    header.appendChild(title);
+    header.appendChild(addBtn);
+
+    const list = document.createElement("div");
+    list.className = "gv-folder-list";
+
+    container.appendChild(header);
+    container.appendChild(list);
+
+    const insertBefore = findInsertBeforeNode(sidebar);
+    if (insertBefore && insertBefore.parentElement) {
+      insertBefore.parentElement.insertBefore(container, insertBefore);
+    } else {
+      sidebar.appendChild(container);
+    }
+
+    state.rootEl = container;
+    state.listEl = list;
+    if (state.dataLoaded) {
+      render();
+    }
   };
 
-  const findSidebarByLabel = () => {
-    const labels = ["New chat", "新 Chat", "新建聊天"];
-    const nodes = Array.from(document.querySelectorAll("a, button, div, span"));
-    const match = nodes.find((node) => {
-      const text = (node.textContent || "").trim();
-      return labels.includes(text);
-    });
-    if (!match) return null;
-    let el = match;
-    for (let i = 0; i < 6 && el; i += 1) {
-      const role = el.getAttribute ? el.getAttribute("role") : null;
-      const testId = el.getAttribute ? el.getAttribute("data-testid") : null;
-      if (
-        el.tagName === "NAV" ||
-        el.tagName === "ASIDE" ||
-        role === "navigation" ||
-        testId === "sidebar"
-      ) {
-        return el;
-      }
-      el = el.parentElement;
+  const findSidebarNav = () => {
+    const sidebarRoot = document.querySelector("#stage-slideover-sidebar");
+    if (sidebarRoot) {
+      const nav = sidebarRoot.querySelector('nav[aria-label="Chat history"]');
+      if (nav) return nav;
     }
-    return match.closest("nav, aside") || match.parentElement;
+    const nav = document.querySelector('nav[aria-label="Chat history"]');
+    if (nav) return nav;
+    return document.querySelector("aside") || document.querySelector("nav");
   };
 
   const findInsertBeforeNode = (sidebar) => {
-    const labels = ["Projects", "项目", "Your chats", "你的聊天", "Your Chats"];
+    const labels = ["Projects", "项目", "Your chats", "你的聊天"];
     const nodes = Array.from(sidebar.querySelectorAll("div, span, h2, h3"));
-    const match = nodes.find((node) => {
-      const text = (node.textContent || "").trim();
-      return labels.includes(text);
-    });
-    return match || null;
+    const labelMatch = nodes.find((node) => labels.includes((node.textContent || "").trim()));
+    if (labelMatch) return labelMatch;
+
+    const firstChat = sidebar.querySelector('a[data-testid^="history-item-"], a[href*="/c/"]');
+    if (firstChat) return firstChat;
+
+    const menuAside = sidebar.querySelector("aside");
+    if (menuAside && menuAside.parentElement) {
+      return menuAside.nextElementSibling;
+    }
+
+    return null;
   };
 
   const loadData = () =>
     new Promise((resolve) => {
-      chrome.storage.local.get([STORAGE_KEYS.folders, STORAGE_KEYS.chats], (data) => {
-        state.folders = Array.isArray(data[STORAGE_KEYS.folders])
-          ? data[STORAGE_KEYS.folders]
-          : [];
-        state.chats = Array.isArray(data[STORAGE_KEYS.chats])
-          ? data[STORAGE_KEYS.chats]
-          : [];
+      chrome.storage.local.get([STORAGE_KEY], (data) => {
+        const stored = data[STORAGE_KEY] || {};
+        state.folders = Array.isArray(stored.folders) ? stored.folders : [];
+        state.folderContents = stored.folderContents || {};
         resolve();
       });
     });
 
-  const saveFolders = () => {
+  const saveData = () => {
     chrome.storage.local.set({
-      [STORAGE_KEYS.folders]: state.folders,
-    });
-  };
-
-  const saveChats = () => {
-    chrome.storage.local.set({
-      [STORAGE_KEYS.chats]: state.chats,
+      [STORAGE_KEY]: {
+        folders: state.folders,
+        folderContents: state.folderContents,
+      },
     });
   };
 
   const wireStorageListener = () => {
-    if (!chrome.storage || !chrome.storage.onChanged) return;
+    if (!chrome.storage?.onChanged) return;
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
-      if (changes[STORAGE_KEYS.folders]) {
-        state.folders = changes[STORAGE_KEYS.folders].newValue || [];
-        render();
-      }
-      if (changes[STORAGE_KEYS.chats]) {
-        state.chats = changes[STORAGE_KEYS.chats].newValue || [];
-        render();
-      }
+      if (!changes[STORAGE_KEY]) return;
+      const next = changes[STORAGE_KEY].newValue || {};
+      state.folders = Array.isArray(next.folders) ? next.folders : [];
+      state.folderContents = next.folderContents || {};
+      render();
     });
-  };
-
-  const addFolder = (parentId) => {
-    const name = window.prompt("Folder name?");
-    if (!name) return;
-    const folder = {
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      parentId: parentId || null,
-      order: Date.now(),
-    };
-    state.folders.push(folder);
-    saveFolders();
-    render();
-  };
-
-  const moveFolderToRoot = (folderId) => {
-    const folder = state.folders.find((item) => item.id === folderId);
-    if (!folder) return;
-    folder.parentId = null;
-    folder.order = Date.now();
-    saveFolders();
-    render();
-  };
-
-  const reorderFolder = (dragId, targetId) => {
-    const dragFolder = state.folders.find((folder) => folder.id === dragId);
-    const targetFolder = state.folders.find((folder) => folder.id === targetId);
-    if (!dragFolder || !targetFolder) return;
-    if (dragFolder.parentId !== targetFolder.parentId) return;
-
-    const siblings = state.folders
-      .filter((folder) => folder.parentId === dragFolder.parentId)
-      .sort((a, b) => a.order - b.order);
-
-    const dragIndex = siblings.findIndex((folder) => folder.id === dragId);
-    const targetIndex = siblings.findIndex((folder) => folder.id === targetId);
-    if (dragIndex === -1 || targetIndex === -1) return;
-
-    siblings.splice(dragIndex, 1);
-    const insertIndex = targetIndex >= siblings.length ? siblings.length : targetIndex + 1;
-    siblings.splice(insertIndex, 0, dragFolder);
-
-    siblings.forEach((folder, index) => {
-      folder.order = index;
-    });
-
-    saveFolders();
-    render();
-  };
-
-  const assignChatToFolder = (chatId, folderId) => {
-    const chat = state.chats.find((item) => item.id === chatId);
-    if (!chat) return;
-    chat.folderId = folderId || null;
-    chat.updatedAt = Date.now();
-    saveChats();
-    render();
   };
 
   const syncChatsFromDOM = () => {
-    const sidebar = findSidebar();
+    const sidebar = findSidebarNav();
     if (!sidebar) return;
-
     const links = Array.from(sidebar.querySelectorAll("a[href]"));
     const chatLinks = links.filter((link) => {
       const href = link.getAttribute("href") || "";
       return href.includes("/c/");
     });
 
-    let changed = false;
-    const byId = new Map(state.chats.map((chat) => [chat.id, chat]));
-
     chatLinks.forEach((link) => {
       const href = link.getAttribute("href") || "";
       const url = new URL(href, window.location.origin);
       const parts = url.pathname.split("/").filter(Boolean);
-      const idIndex = parts.indexOf("c");
-      if (idIndex === -1 || !parts[idIndex + 1]) return;
-      const chatId = parts[idIndex + 1];
+      const idx = parts.indexOf("c");
+      if (idx === -1 || !parts[idx + 1]) return;
+      const chatId = parts[idx + 1];
       const title = (link.textContent || "").trim() || "Untitled";
-      const existing = byId.get(chatId);
-      if (existing) {
-        if (existing.title !== title || existing.url !== url.href) {
-          existing.title = title;
-          existing.url = url.href;
-          existing.updatedAt = Date.now();
-          changed = true;
-        }
-      } else {
-        state.chats.push({
-          id: chatId,
-          title,
-          url: url.href,
-          folderId: null,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
-        changed = true;
-      }
-
+      state.chatIndex.set(chatId, { id: chatId, title, url: url.href });
       wireChatLink(link, chatId);
     });
-
-    if (changed) {
-      saveChats();
-      render();
-    }
   };
 
   const wireChatLink = (link, chatId) => {
@@ -437,15 +420,16 @@
     link.addEventListener("dragstart", (event) => {
       const payload = JSON.stringify({ type: "chat", id: chatId });
       event.dataTransfer.setData("application/json", payload);
+      event.dataTransfer.setData("text/plain", payload);
       event.dataTransfer.effectAllowed = "move";
     });
   };
 
   const observeSidebar = () => {
-    const sidebar = findSidebar();
+    const sidebar = findSidebarNav();
     if (!sidebar) return;
     const observer = new MutationObserver(() => {
-      if (!document.getElementById(ROOT_ID)) {
+      if (!document.querySelector(`.${ROOT_CLASS}`)) {
         mountUI();
       }
       syncChatsFromDOM();
@@ -453,114 +437,129 @@
     observer.observe(sidebar, { childList: true, subtree: true });
   };
 
+  const promptCreateFolder = (parentId) => {
+    const name = window.prompt("Folder name?");
+    if (!name) return;
+    const folder = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      parentId: parentId || null,
+      order: Date.now(),
+    };
+    state.folders.push(folder);
+    saveData();
+    render();
+  };
+
+  const renameFolder = (folderId) => {
+    const folder = state.folders.find((item) => item.id === folderId);
+    if (!folder) return;
+    const name = window.prompt("Rename folder", folder.name);
+    if (!name) return;
+    folder.name = name.trim();
+    saveData();
+    render();
+  };
+
+  const deleteFolder = (folderId) => {
+    const folder = state.folders.find((item) => item.id === folderId);
+    if (!folder) return;
+    if (!window.confirm(`Delete folder "${folder.name}"?`)) return;
+    const toDelete = new Set();
+    collectFolderIds(folderId, toDelete);
+    state.folders = state.folders.filter((item) => !toDelete.has(item.id));
+    toDelete.forEach((id) => {
+      delete state.folderContents[id];
+    });
+    saveData();
+    render();
+  };
+
+  const collectFolderIds = (folderId, set) => {
+    set.add(folderId);
+    state.folders
+      .filter((item) => item.parentId === folderId)
+      .forEach((child) => collectFolderIds(child.id, set));
+  };
+
+  const assignChatToFolder = (chatId, folderId) => {
+    const list = state.folderContents[folderId] || [];
+    if (!list.includes(chatId)) {
+      state.folderContents[folderId] = [...list, chatId];
+      saveData();
+      render();
+    }
+  };
+
   const readDragPayload = (event) => {
-    if (!event.dataTransfer) return null;
-    const data = event.dataTransfer.getData("application/json");
+    const data =
+      event.dataTransfer?.getData("application/json") ||
+      event.dataTransfer?.getData("text/plain");
     if (!data) return null;
     try {
       return JSON.parse(data);
-    } catch (error) {
+    } catch {
       return null;
     }
   };
 
   const render = () => {
-    if (!state.treeEl) return;
-    state.treeEl.innerHTML = "";
+    if (!state.listEl) return;
+    state.listEl.innerHTML = "";
 
-    const foldersByParent = new Map();
+    const byParent = new Map();
     state.folders.forEach((folder) => {
       const key = folder.parentId || "root";
-      if (!foldersByParent.has(key)) foldersByParent.set(key, []);
-      foldersByParent.get(key).push(folder);
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(folder);
     });
 
-    foldersByParent.forEach((items) => {
+    byParent.forEach((items) => {
       items.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
     });
 
-    const chatsByFolder = new Map();
-    state.chats.forEach((chat) => {
-      const key = chat.folderId || "root";
-      if (!chatsByFolder.has(key)) chatsByFolder.set(key, []);
-      chatsByFolder.get(key).push(chat);
-    });
-
-    chatsByFolder.forEach((items) => {
-      items.sort((a, b) => b.updatedAt - a.updatedAt);
-    });
-
-    const query = state.search;
-    const visibleFolderIds = new Set();
-
-    const folderMatches = (folderId) => {
-      const folder = state.folders.find((item) => item.id === folderId);
-      if (!folder) return false;
-      const nameMatch = folder.name.toLowerCase().includes(query);
-      if (!query) return true;
-      if (nameMatch) return true;
-      const chats = chatsByFolder.get(folderId) || [];
-      const chatMatch = chats.some((chat) => chat.title.toLowerCase().includes(query));
-      if (chatMatch) return true;
-      const children = foldersByParent.get(folderId) || [];
-      return children.some((child) => folderMatches(child.id));
-    };
-
-    state.folders.forEach((folder) => {
-      if (folderMatches(folder.id)) visibleFolderIds.add(folder.id);
-    });
-
-    const renderFolderLevel = (parentId, depth, container) => {
+    const renderLevel = (parentId, level, container) => {
+      if (level > MAX_LEVEL) return;
       const key = parentId || "root";
-      const folders = foldersByParent.get(key) || [];
+      const folders = byParent.get(key) || [];
 
       folders.forEach((folder) => {
-        if (query && !visibleFolderIds.has(folder.id)) return;
-        const row = document.createElement("div");
-        row.className = "cgpt-folder-row";
-        row.style.marginLeft = `${depth * 12}px`;
-        row.dataset.folderId = folder.id;
-        row.setAttribute("draggable", "true");
-        row.addEventListener("dragstart", (event) => {
-          const payload = JSON.stringify({ type: "folder", id: folder.id });
-          event.dataTransfer.setData("application/json", payload);
-          event.dataTransfer.effectAllowed = "move";
-        });
+        const item = document.createElement("div");
+        item.className = "gv-folder-item";
+        item.dataset.folderId = folder.id;
 
-        row.addEventListener("dragover", (event) => {
+        const header = document.createElement("div");
+        header.className = "gv-folder-item-header";
+        header.style.paddingLeft = `${level * 16 + 12}px`;
+
+        header.addEventListener("dragover", (event) => {
           const payload = readDragPayload(event);
-          if (!payload) return;
-          if (payload.type === "chat" || payload.type === "folder") {
-            event.preventDefault();
-            row.dataset.drop = "true";
-          }
-        });
-
-        row.addEventListener("dragleave", () => {
-          row.dataset.drop = "false";
-        });
-
-        row.addEventListener("drop", (event) => {
-          const payload = readDragPayload(event);
-          if (!payload) return;
+          if (!payload || payload.type !== "chat") return;
           event.preventDefault();
-          row.dataset.drop = "false";
-          if (payload.type === "chat") {
-            assignChatToFolder(payload.id, folder.id);
-            return;
-          }
-          if (payload.type === "folder" && payload.id !== folder.id) {
-            reorderFolder(payload.id, folder.id);
-          }
+          header.classList.add("gv-folder-dragover");
         });
 
-        const toggle = document.createElement("button");
-        toggle.className = "cgpt-folder-toggle";
-        toggle.type = "button";
-        const hasChildren = (foldersByParent.get(folder.id) || []).length > 0;
-        const isExpanded = state.expanded.has(folder.id) || query;
-        toggle.textContent = hasChildren ? (isExpanded ? "▾" : "▸") : "";
-        toggle.addEventListener("click", () => {
+        header.addEventListener("dragleave", () => {
+          header.classList.remove("gv-folder-dragover");
+        });
+
+        header.addEventListener("drop", (event) => {
+          const payload = readDragPayload(event);
+          if (!payload || payload.type !== "chat") return;
+          event.preventDefault();
+          header.classList.remove("gv-folder-dragover");
+          assignChatToFolder(payload.id, folder.id);
+        });
+
+        const expandBtn = document.createElement("button");
+        expandBtn.className = "gv-folder-expand-btn";
+        const hasChildren = (byParent.get(folder.id) || []).length > 0;
+        const isExpanded = state.expanded.has(folder.id);
+        expandBtn.innerHTML = `<span class="google-symbols">${
+          hasChildren ? (isExpanded ? "expand_more" : "chevron_right") : "chevron_right"
+        }</span>`;
+        expandBtn.addEventListener("click", (event) => {
+          event.stopPropagation();
           if (state.expanded.has(folder.id)) {
             state.expanded.delete(folder.id);
           } else {
@@ -569,83 +568,122 @@
           render();
         });
 
+        const icon = document.createElement("span");
+        icon.className = "gv-folder-icon google-symbols";
+        icon.textContent = "folder";
+
         const name = document.createElement("div");
-        name.className = "cgpt-folder-name";
+        name.className = "gv-folder-name";
         name.textContent = folder.name;
 
-        const chats = chatsByFolder.get(folder.id) || [];
-        const count = document.createElement("div");
-        count.className = "cgpt-folder-count";
-        count.textContent = `${chats.length}`;
-
-        const addChild = document.createElement("button");
-        addChild.className = "cgpt-folder-add-child";
-        addChild.type = "button";
-        addChild.textContent = "+";
-        addChild.addEventListener("click", (event) => {
+        const actions = document.createElement("button");
+        actions.className = "gv-folder-actions-btn";
+        actions.type = "button";
+        actions.innerHTML = '<span class="google-symbols">more_vert</span>';
+        actions.addEventListener("click", (event) => {
           event.stopPropagation();
-          addFolder(folder.id);
+          openFolderMenu(event.clientX, event.clientY, folder.id);
         });
 
-        row.appendChild(toggle);
-        row.appendChild(name);
-        row.appendChild(count);
-        row.appendChild(addChild);
+        header.appendChild(expandBtn);
+        header.appendChild(icon);
+        header.appendChild(name);
+        header.appendChild(actions);
 
-        container.appendChild(row);
+        item.appendChild(header);
 
         if (isExpanded) {
-          const childrenWrap = document.createElement("div");
-          childrenWrap.className = "cgpt-folder-children";
+          const content = document.createElement("div");
+          content.className = "gv-folder-content";
 
-          const childFolders = foldersByParent.get(folder.id) || [];
+          const childFolders = byParent.get(folder.id) || [];
           if (childFolders.length) {
-            renderFolderLevel(folder.id, depth + 1, childrenWrap);
+            renderLevel(folder.id, level + 1, content);
           }
 
-          const visibleChats = query
-            ? chats.filter((chat) => chat.title.toLowerCase().includes(query))
-            : chats;
+          const chats = (state.folderContents[folder.id] || [])
+            .map((id) => state.chatIndex.get(id))
+            .filter(Boolean);
 
-          visibleChats.forEach((chat) => {
-            const chatRow = document.createElement("div");
-            chatRow.className = "cgpt-chat-row";
-            chatRow.textContent = chat.title;
-            chatRow.style.paddingLeft = `${24 + depth * 12}px`;
-            chatRow.setAttribute("draggable", "true");
-            chatRow.addEventListener("dragstart", (event) => {
-              const payload = JSON.stringify({ type: "chat", id: chat.id });
-              event.dataTransfer.setData("application/json", payload);
-              event.dataTransfer.effectAllowed = "move";
-            });
-            chatRow.addEventListener("click", () => {
+          chats.forEach((chat) => {
+            const row = document.createElement("div");
+            row.className = "gv-folder-conversation";
+            row.style.paddingLeft = `${level * 16 + 28}px`;
+            row.textContent = chat.title;
+            row.addEventListener("click", () => {
               window.location.href = chat.url;
             });
-            childrenWrap.appendChild(chatRow);
+            content.appendChild(row);
           });
 
-          if (!childFolders.length && !visibleChats.length) {
+          if (!childFolders.length && !chats.length) {
             const empty = document.createElement("div");
-            empty.className = "cgpt-empty";
+            empty.className = "gv-folder-empty";
             empty.textContent = "Drop chats here";
-            childrenWrap.appendChild(empty);
+            content.appendChild(empty);
           }
 
-          container.appendChild(childrenWrap);
+          item.appendChild(content);
         }
+
+        container.appendChild(item);
       });
     };
 
-    const rootFolders = foldersByParent.get("root") || [];
-    if (!rootFolders.length) {
+    if (!state.folders.length) {
       const empty = document.createElement("div");
-      empty.className = "cgpt-empty";
-      empty.textContent = "No folders yet. Click + to add one.";
-      state.treeEl.appendChild(empty);
+      empty.className = "gv-folder-empty";
+      empty.textContent = "No folders yet.";
+      state.listEl.appendChild(empty);
       return;
     }
 
-    renderFolderLevel(null, 0, state.treeEl);
+    renderLevel(null, 0, state.listEl);
+  };
+
+  const openFolderMenu = (x, y, folderId) => {
+    closeMenu();
+    if (!state.rootEl) return;
+    const menu = document.createElement("div");
+    menu.className = "gv-folder-menu";
+
+    const addSub = createMenuItem("Add subfolder", () => promptCreateFolder(folderId));
+    const rename = createMenuItem("Rename", () => renameFolder(folderId));
+    const remove = createMenuItem("Delete", () => deleteFolder(folderId));
+
+    menu.appendChild(addSub);
+    menu.appendChild(rename);
+    menu.appendChild(remove);
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const maxX = window.innerWidth - rect.width - 8;
+    const maxY = window.innerHeight - rect.height - 8;
+    menu.style.left = `${Math.max(8, Math.min(x, maxX))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, maxY))}px`;
+
+    state.menuEl = menu;
+    document.addEventListener("click", closeMenu, { once: true });
+  };
+
+  const createMenuItem = (label, handler) => {
+    const item = document.createElement("button");
+    item.className = "gv-folder-menu-item";
+    item.type = "button";
+    item.textContent = label;
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      handler();
+      closeMenu();
+    });
+    return item;
+  };
+
+  const closeMenu = () => {
+    if (state.menuEl && state.menuEl.parentElement) {
+      state.menuEl.parentElement.removeChild(state.menuEl);
+    }
+    state.menuEl = null;
   };
 
   if (document.readyState === "loading") {
