@@ -1,16 +1,20 @@
 # ChatGPT Folders Extension
 
-A simple Chrome extension that customizes ChatGPT and adds a left sidebar folder tree to organize historical chats.
+Version: v1 (first release).
 
-## Features (Planned)
-- Hierarchical folders with expand/collapse
-- Chat counts per folder
-- Drag-and-drop to move chats into folders
-- Search folders and chats
-- Local persistence via Chrome storage
+A simple Chrome extension that adds a left sidebar folder tree to organize historical chats on ChatGPT.com.
 
-## Current Status
-MVP scaffolding exists. The extension injects styles and a popup; the folder UI will be implemented next.
+## Features (v1)
+- Folder tree in the left sidebar
+- Create folders and subfolders
+- Expand/collapse folders
+- Drag chats into folders
+- Pin folders
+- Rename/delete folders
+- Change folder color
+- Right‑click menu on chats to “Move to folder”
+- Remove chat from folder with a hover “x” button
+- Local persistence via `chrome.storage.local`
 
 ## Project Structure
 - `manifest.json` Chrome extension manifest (MV3)
@@ -21,16 +25,14 @@ MVP scaffolding exists. The extension injects styles and a popup; the folder UI 
 1. Open `chrome://extensions/`
 2. Enable Developer mode
 3. Click `Load unpacked`
-4. Select the project root: `/Users/kenchen/Projects/chatgpt_folder`
+4. Select the project root (this repository folder)
 5. Open `https://chatgpt.com/`
 6. After edits, click `Reload` in `chrome://extensions/` and refresh the page
 
 ## Roadmap
-- Build folder tree UI in the sidebar
-- Persist folders and assignments
-- DnD interactions and empty states
 - Accessibility and keyboard support
+- Folder search and filtering
+- Import/export and sync
 
 ## Notes
 This project is for personal use and experimentation. No backend is required for the MVP.
-
